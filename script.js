@@ -1,51 +1,68 @@
-const socket = io();
 const videoUpload = document.getElementById('videoUpload');
 const videoPlayer = document.getElementById('videoPlayer');
 const playBtn = document.getElementById('playBtn');
 const pauseBtn = document.getElementById('pauseBtn');
+const connectBtn = document.getElementById('connectBtn');
+const peerIdInput = document.getElementById('peerId');
+
+const peer = new Peer();
+
+peer.on('open', (id) => {
+    console.log('My peer ID is: ' + id);
+});
+
+peer.on('connection', (conn) => {
+    conn.on('data', (data) => {
+        if (data.type === 'play') {
+            videoPlayer.play();
+        } else if (data.type === 'pause') {
+            videoPlayer.pause();
+        } else if (data.type === 'timeUpdate') {
+            videoPlayer.currentTime = data.time;
+        }
+    });
+});
 
 videoUpload.addEventListener('change', async (event) => {
     const videoFile = event.target.files[0];
     if (videoFile) {
-        const formData = new FormData();
-        formData.append('video', videoFile);
-
-        const response = await fetch('/upload', {
-            method: 'POST',
-            body: formData,
-        });
-
-        const data = await response.json();
-        videoPlayer.src = data.videoPath;
+        const fileURL = URL.createObjectURL(videoFile);
+        videoPlayer.src = fileURL;
         videoPlayer.style.display = 'block';
         videoPlayer.play();
-        socket.emit('play');
     }
 });
 
 playBtn.addEventListener('click', () => {
     videoPlayer.play();
-    socket.emit('play');
+    sendAction('play');
 });
 
 pauseBtn.addEventListener('click', () => {
     videoPlayer.pause();
-    socket.emit('pause');
+    sendAction('pause');
 });
 
 videoPlayer.addEventListener('timeupdate', () => {
-    socket.emit('timeUpdate', videoPlayer.currentTime);
+    sendAction('timeUpdate', videoPlayer.currentTime);
 });
 
-// Synchronizing play and pause actions across clients
-socket.on('play', () => {
-    videoPlayer.play();
+connectBtn.addEventListener('click', () => {
+    const peerId = peerIdInput.value;
+    const conn = peer.connect(peerId);
+    
+    conn.on('open', () => {
+        console.log('Connected to ' + peerId);
+    });
 });
 
-socket.on('pause', () => {
-    videoPlayer.pause();
-});
+function sendAction(type, time) {
+    const data = { type };
+    if (time !== undefined) data.time = time;
 
-socket.on('timeUpdate', (time) => {
-    videoPlayer.currentTime = time;
-});
+    peer.connections.forEach((conn) => {
+        conn.forEach((c) => {
+            c.send(data);
+        });
+    });
+}
